@@ -53,11 +53,10 @@ class ClaudeUsageApp(rumps.App):
             cookie = get_session_cookie()
             org_id = get_org_id(cookie)
             usage = get_usage(cookie, org_id)
+            self._refresh(usage)
         except Exception:
             logger.exception("Poll failed")
             self.title = "--% | --%"
-            return
-        self._refresh(usage)
 
     def _disable_autolaunch(self, _):
         try:
