@@ -4,7 +4,9 @@ import subprocess
 import threading
 import datetime
 
+import objc
 import rumps
+from Foundation import NSThread, NSObject
 
 from cookie import get_session_cookie
 from api import get_org_id, get_usage
@@ -18,6 +20,16 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class _MainThreadRunner(NSObject):
+    def initWithFn_(self, fn):
+        self = super().init()
+        self._fn = fn
+        return self
+
+    def run(self):
+        self._fn()
 
 
 class ClaudeUsageApp(rumps.App):
@@ -48,15 +60,24 @@ class ClaudeUsageApp(rumps.App):
     def _tick(self, _):
         threading.Thread(target=self._poll, daemon=True).start()
 
+    def _dispatch_to_main(self, fn):
+        if NSThread.isMainThread():
+            fn()
+        else:
+            runner = _MainThreadRunner.alloc().initWithFn_(fn)
+            runner.performSelectorOnMainThread_withObject_waitUntilDone_(
+                "run", None, False
+            )
+
     def _poll(self):
         try:
             cookie = get_session_cookie()
             org_id = get_org_id(cookie)
             usage = get_usage(cookie, org_id)
-            self._refresh(usage)
+            self._dispatch_to_main(lambda: self._refresh(usage))
         except Exception:
             logger.exception("Poll failed")
-            self.title = "--% | --%"
+            self._dispatch_to_main(lambda: setattr(self, "title", "--% | --%"))
 
     def _disable_autolaunch(self, _):
         try:
